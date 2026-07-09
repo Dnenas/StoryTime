@@ -573,7 +573,51 @@ function PublishModal({ onClose, onPublish }) {
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
               <span style={{ fontSize: 11.5, color: "#c0392b", fontFamily: "'Inter', sans-serif" }}>{error}</span>
               <span style={{ fontSize: 11.5, color: "#B0A692", fontFamily: "'Inter', sans-serif" }}>{text.length}/800</span>
-              function AdminGate({ onSuccess }) {
+            </div>
+            <button
+              disabled={submitting}
+              onClick={handlePublish}
+              style={{
+                marginTop: 14, width: "100%", fontFamily: "'Fredoka', sans-serif", fontWeight: 600,
+                fontSize: 15, background: "#F0257C", color: "#fff",
+                border: "2px solid #1A1523", borderRadius: 12, padding: "13px", cursor: "pointer",
+                boxShadow: "3px 3px 0 #1A1523", display: "flex", alignItems: "center",
+                justifyContent: "center", gap: 8,
+              }}
+            >
+              {submitting ? "Publicando..." : <>Publicar anónimamente <Send size={15} /></>}
+            </button>
+          </>
+        )}
+
+        {step === 4 && (
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ fontSize: 46, marginBottom: 10 }}>🎉</div>
+            <h2 style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 700, fontSize: 22, margin: "0 0 6px" }}>
+              ¡Publicado!
+            </h2>
+            <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 14, color: "#4A4358", marginBottom: 20 }}>
+              Tu historia ya está en el muro, totalmente anónima.
+            </p>
+            <button
+              onClick={onClose}
+              style={{
+                fontFamily: "'Fredoka', sans-serif", fontWeight: 600, fontSize: 14,
+                background: "#3FA9F5", color: "#fff", border: "2px solid #1A1523",
+                borderRadius: 999, padding: "11px 24px", cursor: "pointer",
+                boxShadow: "3px 3px 0 #1A1523",
+              }}
+            >
+              Ver el muro
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminGate({ onSuccess }) {
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [show, setShow] = useState(false);
