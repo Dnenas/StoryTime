@@ -21,11 +21,6 @@ function timeAgo(ts) {
   return `hace ${Math.floor(diff / 86400)} d`;
 }
 
-// ---- Supabase data helpers ----
-// Tabla "stories": id (uuid, default), created_at (timestamptz, default now()),
-// name (text), email (text), phone (text), category (text), text (text),
-// reactions (jsonb, default '{}')
-
 async function fetchPublicStories() {
   const { data, error } = await supabase
     .from("public_stories")
@@ -48,6 +43,30 @@ async function fetchAdminStories() {
     return [];
   }
   return data || [];
+}
+
+async function sendVerificationCode(email) {
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: true },
+  });
+  if (error) {
+    console.error("Error al enviar código:", error.message);
+    throw error;
+  }
+}
+
+async function verifyCode(email, token) {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: "email",
+  });
+  if (error) {
+    console.error("Error al verificar código:", error.message);
+    throw error;
+  }
+  return data;
 }
 
 async function insertStory({ name, email, phone, category, text }) {
@@ -85,7 +104,6 @@ function Blob({ className, style }) {
   );
 }
 
-// Hand-drawn doodle SVGs (stars, hearts, arrows, scribbles) as sticker accents
 function DoodleStar({ style, color = "#1A1523", size = 32 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ position: "absolute", ...style }}>
@@ -133,7 +151,6 @@ function DoodleTicks({ style, color = "#1A1523" }) {
     </svg>
   );
 }
-
 function TopBar({ view, setView }) {
   return (
     <div style={{
@@ -187,7 +204,6 @@ function Hero() {
       position: "relative", overflow: "hidden", padding: "50px 20px 36px",
       maxWidth: 720, margin: "0 auto",
     }}>
-      {/* hand-drawn accents scattered like the reference sticker */}
       <DoodleStar style={{ top: 4, left: "8%" }} color="#1A1523" size={26} />
       <DoodleStar style={{ top: 18, left: "32%" }} color="#FFC93C" size={22} />
       <DoodleStar style={{ top: 30, right: "10%" }} color="#3FA9F5" size={20} />
@@ -234,7 +250,6 @@ function Hero() {
     </div>
   );
 }
-
 function StoryCard({ story, onReact, index }) {
   const rotation = ROTATIONS[index % ROTATIONS.length];
   const accents = ["#F0257C", "#3FA9F5", "#FFC93C"];
@@ -298,9 +313,6 @@ function StoryCard({ story, onReact, index }) {
 }
 
 function Feed({ stories, onReact, loading }) {
-  const cols = [[], [], []];
-  stories.forEach((s, i) => cols[i % 3].push({ s, i }));
-
   if (loading) {
     return (
       <div style={{ textAlign: "center", padding: 60, fontFamily: "'Inter', sans-serif", color: "#B0A692" }}>
@@ -338,6 +350,32 @@ function Feed({ stories, onReact, loading }) {
   );
 }
 
+function FieldLabel({ children }) {
+  return (
+    <label style={{
+      display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 600,
+      fontSize: 12, color: "#1A1523", marginBottom: 5, marginTop: 12,
+    }}>
+      {children}
+    </label>
+  );
+}
+
+function TextInput({ value, onChange, placeholder, type = "text" }) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{
+        width: "100%", fontFamily: "'Inter', sans-serif", fontSize: 14.5,
+        border: "2px solid #1A1523", borderRadius: 10, padding: "11px 13px",
+        outline: "none", background: "#fff", boxSizing: "border-box",
+      }}
+    />
+  );
+}
 function PublishModal({ onClose, onPublish }) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
@@ -345,10 +383,41 @@ function PublishModal({ onClose, onPublish }) {
   const [phone, setPhone] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [text, setText] = useState("");
+  const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
   const [error, setError] = useState("");
+  const [codeError, setCodeError] = useState("");
 
   const canGoStep2 = name.trim().length >= 2 && /\S+@\S+\.\S+/.test(email) && phone.trim().length >= 7;
+
+  const handleSendCode = async () => {
+    setSendingCode(true);
+    setCodeError("");
+    try {
+      await sendVerificationCode(email);
+      setStep(2);
+    } catch (e) {
+      setError("No pudimos enviar el código. Revisa que el correo esté bien escrito.");
+    }
+    setSendingCode(false);
+  };
+
+  const handleVerifyCode = async () => {
+    if (code.trim().length < 6) {
+      setCodeError("El código tiene 6 dígitos");
+      return;
+    }
+    setSendingCode(true);
+    setCodeError("");
+    try {
+      await verifyCode(email, code.trim());
+      setStep(3);
+    } catch (e) {
+      setCodeError("Código incorrecto o vencido. Intenta de nuevo.");
+    }
+    setSendingCode(false);
+  };
 
   const handlePublish = async () => {
     if (text.trim().length < 8) {
@@ -358,7 +427,7 @@ function PublishModal({ onClose, onPublish }) {
     setSubmitting(true);
     await onPublish({ name, email, phone, category, text });
     setSubmitting(false);
-    setStep(3);
+    setStep(4);
   };
 
   return (
@@ -390,7 +459,7 @@ function PublishModal({ onClose, onPublish }) {
               Antes de publicar 🔒
             </h2>
             <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 13.5, color: "#4A4358", margin: "0 0 20px" }}>
-              Tus datos son privados: nadie que lea la historia sabrá que fuiste tú. Solo los pedimos para verificar que eres una persona real.
+              Tus datos son privados: nadie que lea la historia sabrá que fuiste tú. Verificamos tu correo para evitar spam.
             </p>
             <FieldLabel>Nombre</FieldLabel>
             <TextInput value={name} onChange={setName} placeholder="¿Cómo te llamas?" />
@@ -398,9 +467,10 @@ function PublishModal({ onClose, onPublish }) {
             <TextInput value={email} onChange={setEmail} placeholder="tucorreo@gmail.com" type="email" />
             <FieldLabel>Celular</FieldLabel>
             <TextInput value={phone} onChange={setPhone} placeholder="55 1234 5678" type="tel" />
+            {error && <p style={{ fontSize: 12, color: "#e74c3c", fontFamily: "'Inter', sans-serif", margin: "8px 0 0" }}>{error}</p>}
             <button
-              disabled={!canGoStep2}
-              onClick={() => setStep(2)}
+              disabled={!canGoStep2 || sendingCode}
+              onClick={handleSendCode}
               style={{
                 marginTop: 18, width: "100%", fontFamily: "'Fredoka', sans-serif", fontWeight: 600,
                 fontSize: 15, background: canGoStep2 ? "#3FA9F5" : "#D8CFE8", color: "#fff",
@@ -408,12 +478,61 @@ function PublishModal({ onClose, onPublish }) {
                 boxShadow: canGoStep2 ? "3px 3px 0 #1A1523" : "none",
               }}
             >
-              Siguiente →
+              {sendingCode ? "Enviando código..." : "Verificar correo →"}
             </button>
           </>
         )}
 
         {step === 2 && (
+          <>
+            <h2 style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 700, fontSize: 24, margin: "6px 0 4px" }}>
+              Revisa tu correo 📩
+            </h2>
+            <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 13.5, color: "#4A4358", margin: "0 0 20px" }}>
+              Te enviamos un código de 6 dígitos a <strong>{email}</strong>. Escríbelo aquí para confirmar que el correo es tuyo.
+            </p>
+            <FieldLabel>Código de verificación</FieldLabel>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={code}
+              onChange={(e) => { setCode(e.target.value.replace(/\D/g, "")); setCodeError(""); }}
+              placeholder="123456"
+              style={{
+                width: "100%", fontFamily: "'Fredoka', sans-serif", fontSize: 24, fontWeight: 600,
+                letterSpacing: "0.3em", textAlign: "center",
+                border: "2px solid #1A1523", borderRadius: 10, padding: "13px",
+                outline: "none", background: "#fff", boxSizing: "border-box",
+              }}
+            />
+            {codeError && <p style={{ fontSize: 12, color: "#e74c3c", fontFamily: "'Inter', sans-serif", margin: "8px 0 0" }}>{codeError}</p>}
+            <button
+              disabled={sendingCode}
+              onClick={handleVerifyCode}
+              style={{
+                marginTop: 18, width: "100%", fontFamily: "'Fredoka', sans-serif", fontWeight: 600,
+                fontSize: 15, background: "#3FA9F5", color: "#fff",
+                border: "2px solid #1A1523", borderRadius: 12, padding: "13px", cursor: "pointer",
+                boxShadow: "3px 3px 0 #1A1523",
+              }}
+            >
+              {sendingCode ? "Verificando..." : "Confirmar código"}
+            </button>
+            <button
+              onClick={handleSendCode}
+              disabled={sendingCode}
+              style={{
+                marginTop: 10, width: "100%", fontFamily: "'Inter', sans-serif", fontWeight: 600,
+                fontSize: 12.5, background: "none", color: "#4A4358",
+                border: "none", padding: "6px", cursor: "pointer", textDecoration: "underline",
+              }}
+            >
+              Reenviar código
+            </button>
+          </>
+        )}
+{step === 3 && (
           <>
             <h2 style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 700, fontSize: 24, margin: "6px 0 4px" }}>
               Suéltalo todo 🙊
@@ -454,78 +573,7 @@ function PublishModal({ onClose, onPublish }) {
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
               <span style={{ fontSize: 11.5, color: "#c0392b", fontFamily: "'Inter', sans-serif" }}>{error}</span>
               <span style={{ fontSize: 11.5, color: "#B0A692", fontFamily: "'Inter', sans-serif" }}>{text.length}/800</span>
-            </div>
-            <button
-              disabled={submitting}
-              onClick={handlePublish}
-              style={{
-                marginTop: 14, width: "100%", fontFamily: "'Fredoka', sans-serif", fontWeight: 600,
-                fontSize: 15, background: "#F0257C", color: "#fff",
-                border: "2px solid #1A1523", borderRadius: 12, padding: "13px", cursor: "pointer",
-                boxShadow: "3px 3px 0 #1A1523", display: "flex", alignItems: "center",
-                justifyContent: "center", gap: 8,
-              }}
-            >
-              {submitting ? "Publicando..." : <>Publicar anónimamente <Send size={15} /></>}
-            </button>
-          </>
-        )}
-
-        {step === 3 && (
-          <div style={{ textAlign: "center", padding: "20px 0" }}>
-            <div style={{ fontSize: 46, marginBottom: 10 }}>🎉</div>
-            <h2 style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 700, fontSize: 22, margin: "0 0 6px" }}>
-              ¡Publicado!
-            </h2>
-            <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 14, color: "#4A4358", marginBottom: 20 }}>
-              Tu historia ya está en el muro, totalmente anónima.
-            </p>
-            <button
-              onClick={onClose}
-              style={{
-                fontFamily: "'Fredoka', sans-serif", fontWeight: 600, fontSize: 14,
-                background: "#3FA9F5", color: "#fff", border: "2px solid #1A1523",
-                borderRadius: 999, padding: "11px 24px", cursor: "pointer",
-                boxShadow: "3px 3px 0 #1A1523",
-              }}
-            >
-              Ver el muro
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function FieldLabel({ children }) {
-  return (
-    <label style={{
-      display: "block", fontFamily: "'Inter', sans-serif", fontWeight: 600,
-      fontSize: 12, color: "#1A1523", marginBottom: 5, marginTop: 12,
-    }}>
-      {children}
-    </label>
-  );
-}
-
-function TextInput({ value, onChange, placeholder, type = "text" }) {
-  return (
-    <input
-      type={type}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      style={{
-        width: "100%", fontFamily: "'Inter', sans-serif", fontSize: 14.5,
-        border: "2px solid #1A1523", borderRadius: 10, padding: "11px 13px",
-        outline: "none", background: "#fff", boxSizing: "border-box",
-      }}
-    />
-  );
-}
-
-function AdminGate({ onSuccess }) {
+              function AdminGate({ onSuccess }) {
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [show, setShow] = useState(false);
@@ -615,9 +663,8 @@ function AdminGate({ onSuccess }) {
       </div>
     </div>
   );
-}
-
-function AdminPanel({ stories, onLogout, setView }) {
+              }
+              function AdminPanel({ stories, onLogout, setView }) {
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "24px 20px 60px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
@@ -667,35 +714,9 @@ function AdminPanel({ stories, onLogout, setView }) {
               <div style={{
                 fontFamily: "'Inter', sans-serif", fontSize: 13, color: "#1A1523",
                 background: "#FBF3E7", borderRadius: 8, padding: "10px 12px",
-              }}>
-                <span style={{ fontWeight: 600, fontSize: 11, color: "#3FA9F5" }}>{s.category} — </span>
-                {s.text}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatChip({ icon: Icon, label, value }) {
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 10, background: "#fff",
-      border: "2px solid #1A1523", borderRadius: 12, padding: "10px 16px",
-    }}>
-      <Icon size={18} color="#3FA9F5" />
-      <div>
-        <div style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 700, fontSize: 18, lineHeight: 1 }}>{value}</div>
-        <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 10.5, color: "#B0A692" }}>{label}</div>
-      </div>
-    </div>
-  );
-}
-
-export default function StoryTimeApp() {
-  const [view, setView] = useState("feed"); // feed | publish | admin
+              }}
+                export default function StoryTimeApp() {
+  const [view, setView] = useState("feed");
   const [publicStories, setPublicStories] = useState([]);
   const [adminStories, setAdminStories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -717,7 +738,6 @@ export default function StoryTimeApp() {
   useEffect(() => {
     loadPublicStories();
 
-    // Check if there's already a logged-in admin session
     supabase.auth.getSession().then(({ data }) => {
       setAdminAuthed(!!data.session);
       setCheckingSession(false);
@@ -820,4 +840,4 @@ function FooterAdminLink({ setView }) {
       </button>
     </div>
   );
-}
+              }
